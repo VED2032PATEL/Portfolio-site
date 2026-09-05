@@ -181,14 +181,14 @@ export default function Home() {
         Chapter {chapter + 1} of {CHAPTERS.length}: {CHAPTERS[chapter]}
       </p>
 
-      <div className="content-layer" key={chapter}>
+      <div className="content-layer" key={`chapter-${chapter}`}>
         <PortfolioContent index={chapter} />
       </div>
 
       {isTransitioning && (
         <div
           className={`shutter shutter--${shutterPhase}`}
-          key={pullSequence}
+          key={`pull-${pullSequence}`}
           aria-hidden="true"
           onAnimationEnd={handleShutterAnimationEnd}
         >

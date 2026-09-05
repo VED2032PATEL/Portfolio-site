@@ -1,7 +1,6 @@
 'use client';
 
-import { Html } from '@react-three/drei/web/Html';
-import { useGLTF } from '@react-three/drei/core/Gltf';
+import { Html, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
