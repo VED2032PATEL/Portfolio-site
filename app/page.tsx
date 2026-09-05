@@ -1,212 +1,231 @@
 'use client';
 
-import { Html, useGLTF } from '@react-three/drei';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import dynamic from 'next/dynamic';
+import {
+  type AnimationEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
+import { PortfolioContent, CHAPTERS } from '@/components/portfolio-content';
+import { Button } from '@/components/ui/button';
 
-const MODEL_PATH = '/models/mascot_web.glb';
-const TRACKED_BONES = ['Torso', 'Head', 'Eye_L', 'Eye_R'] as const;
+const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
+  ssr: false,
+});
 
-type TrackedBoneName = (typeof TRACKED_BONES)[number];
-type TrackedBones = Record<TrackedBoneName, THREE.Bone>;
-type BoneQuaternions = Record<TrackedBoneName, THREE.Quaternion>;
+const PROMPT_INTERVAL_MS = 120_000;
 
-const EYE_WEIGHT = 1 / 1.69;
-const HEAD_WEIGHT = 0.55 / 1.69;
-const TORSO_WEIGHT = 0.14 / 1.69;
-const MAX_YAW = THREE.MathUtils.degToRad(25);
-const MAX_PITCH = THREE.MathUtils.degToRad(15);
+type VoiceCue = 'prompt' | 'slider';
+type ShutterPhase = 'idle' | 'pull' | 'release';
 
-function makeQuaternionSet(): BoneQuaternions {
-  return {
-    Torso: new THREE.Quaternion(),
-    Head: new THREE.Quaternion(),
-    Eye_L: new THREE.Quaternion(),
-    Eye_R: new THREE.Quaternion(),
-  };
-}
+export default function Home() {
+  const [chapter, setChapter] = useState(0);
+  const [pullSequence, setPullSequence] = useState(0);
+  const [shutterPhase, setShutterPhase] = useState<ShutterPhase>('idle');
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const voiceAudio = useRef<HTMLAudioElement | null>(null);
+  const audioQueue = useRef<VoiceCue[]>([]);
+  const soundEnabledRef = useRef(false);
+  const transitioningRef = useRef(false);
+  const playCueRef = useRef<(cue: VoiceCue) => void>(() => undefined);
+  const isTransitioning = shutterPhase !== 'idle';
 
-function ResponsiveCamera() {
-  const { camera, size } = useThree();
+  useEffect(() => {
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = '/audio/spidey-hey.mp3';
+    voiceAudio.current = audio;
 
-  useLayoutEffect(() => {
-    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    const play = (cue: VoiceCue) => {
+      if (!soundEnabledRef.current) return;
 
-    const targetY = 7.55;
-    const aspect = Math.max(size.width / size.height, 0.4);
-    const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
-    const verticalDistance = 5.7 / (2 * Math.tan(halfFov));
-    const horizontalDistance = 3.85 / (2 * Math.tan(halfFov) * aspect);
-    const distance = Math.max(verticalDistance, horizontalDistance);
-
-    camera.position.set(0, targetY, distance);
-    camera.lookAt(0, targetY, 0);
-    camera.updateProjectionMatrix();
-  }, [camera, size.height, size.width]);
-
-  return null;
-}
-
-function ModelLoading() {
-  return (
-    <Html center>
-      <output className="model-loading" aria-live="polite">
-        <span className="model-loading-dot" />
-        Loading character
-      </output>
-    </Html>
-  );
-}
-
-function CursorMascot() {
-  const gltf = useGLTF(MODEL_PATH);
-  const model = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
-  const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
-  const smoothPointer = useRef(new THREE.Vector2());
-  const lastOffsets = useRef(makeQuaternionSet());
-
-  const bones = useMemo(() => {
-    const result = {} as TrackedBones;
-
-    for (const name of TRACKED_BONES) {
-      const object = model.getObjectByName(name);
-      if (!(object instanceof THREE.Bone)) {
-        throw new Error(`The model is missing the required ${name} bone.`);
+      if (!audio.paused && !audio.ended) {
+        if (!audioQueue.current.includes(cue)) audioQueue.current.push(cue);
+        return;
       }
-      result[name] = object;
+
+      audio.src =
+        cue === 'prompt' ? '/audio/spidey-hey.mp3' : '/audio/spidey-slider.mp3';
+      audio.volume = cue === 'prompt' ? 0.75 : 0.87;
+      audio.currentTime = 0;
+      void audio.play().catch(() => {
+        audioQueue.current = [];
+        soundEnabledRef.current = false;
+        setSoundEnabled(false);
+      });
+    };
+
+    const handleEnded = () => {
+      const nextCue = audioQueue.current.shift();
+      if (nextCue) play(nextCue);
+    };
+
+    playCueRef.current = play;
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      soundEnabledRef.current = false;
+      audioQueue.current = [];
+      audio.removeEventListener('ended', handleEnded);
+      audio.pause();
+      audio.removeAttribute('src');
+      voiceAudio.current = null;
+      playCueRef.current = () => undefined;
+    };
+  }, []);
+
+  const toggleSound = useCallback(() => {
+    if (soundEnabledRef.current) {
+      soundEnabledRef.current = false;
+      setSoundEnabled(false);
+      audioQueue.current = [];
+      const audio = voiceAudio.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+      return;
     }
 
-    model.traverse((object) => {
-      if (object instanceof THREE.Mesh) object.frustumCulled = false;
-    });
+    soundEnabledRef.current = true;
+    setSoundEnabled(true);
+    playCueRef.current('prompt');
+  }, []);
 
-    return result;
-  }, [model]);
+  const showNextChapter = useCallback(() => {
+    if (transitioningRef.current) return;
 
-  const scratch = useMemo(
-    () => ({
-      inverse: new THREE.Quaternion(),
-      euler: new THREE.Euler(0, 0, 0, 'YXZ'),
-      eyeYaw: new THREE.Quaternion(),
-      eyePitch: new THREE.Quaternion(),
-      xAxis: new THREE.Vector3(1, 0, 0),
-      zAxis: new THREE.Vector3(0, 0, 1),
-      next: makeQuaternionSet(),
-    }),
-    [],
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setChapter((value) => (value + 1) % CHAPTERS.length);
+      playCueRef.current('slider');
+      return;
+    }
+
+    transitioningRef.current = true;
+    setShutterPhase('pull');
+    setPullSequence((value) => value + 1);
+  }, []);
+
+  const handleShutterAnimationEnd = useCallback(
+    (event: AnimationEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) return;
+
+      if (shutterPhase === 'pull') {
+        setChapter((value) => (value + 1) % CHAPTERS.length);
+        playCueRef.current('slider');
+        setShutterPhase('release');
+        return;
+      }
+
+      if (shutterPhase === 'release') {
+        transitioningRef.current = false;
+        setShutterPhase('idle');
+      }
+    },
+    [shutterPhase],
   );
 
   useEffect(() => {
-    const idle = gltf.animations.find((clip) => clip.name === 'Idle');
-    const action = idle ? mixer.clipAction(idle) : null;
+    if (shutterPhase === 'idle') return;
+    const failSafe = window.setTimeout(() => {
+      transitioningRef.current = false;
+      setShutterPhase('idle');
+    }, 5000);
+    return () => window.clearTimeout(failSafe);
+  }, [shutterPhase]);
 
-    if (action) {
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      action.play();
-    }
-
-    return () => {
-      action?.stop();
-      mixer.stopAllAction();
-      mixer.uncacheRoot(model);
-    };
-  }, [gltf.animations, mixer, model]);
-
-  useFrame(({ pointer }, rawDelta) => {
-    const delta = Math.min(rawDelta, 0.05);
-
-    for (const name of TRACKED_BONES) {
-      scratch.inverse.copy(lastOffsets.current[name]).invert();
-      bones[name].quaternion.multiply(scratch.inverse).normalize();
-    }
-
-    mixer.update(delta);
-
-    const smoothing = 1 - Math.exp(-10 * delta);
-    smoothPointer.current.x +=
-      (THREE.MathUtils.clamp(pointer.x, -1, 1) - smoothPointer.current.x) *
-      smoothing;
-    smoothPointer.current.y +=
-      (THREE.MathUtils.clamp(pointer.y, -1, 1) - smoothPointer.current.y) *
-      smoothing;
-
-    const yaw = smoothPointer.current.x * MAX_YAW;
-    const pitch = smoothPointer.current.y * MAX_PITCH;
-
-    scratch.next.Torso.setFromEuler(
-      scratch.euler.set(-pitch * TORSO_WEIGHT, yaw * TORSO_WEIGHT, 0, 'YXZ'),
+  useEffect(() => {
+    if (!soundEnabled) return;
+    const promptTimer = window.setInterval(
+      () => playCueRef.current('prompt'),
+      PROMPT_INTERVAL_MS,
     );
-    scratch.next.Head.setFromEuler(
-      scratch.euler.set(-pitch * HEAD_WEIGHT, yaw * HEAD_WEIGHT, 0, 'YXZ'),
-    );
+    return () => window.clearInterval(promptTimer);
+  }, [soundEnabled]);
 
-    scratch.eyeYaw.setFromAxisAngle(scratch.zAxis, yaw * EYE_WEIGHT);
-    scratch.eyePitch.setFromAxisAngle(scratch.xAxis, pitch * EYE_WEIGHT);
-    scratch.next.Eye_L.copy(scratch.eyeYaw)
-      .multiply(scratch.eyePitch)
-      .normalize();
-    scratch.next.Eye_R.copy(scratch.next.Eye_L);
-
-    for (const name of TRACKED_BONES) {
-      bones[name].quaternion.multiply(scratch.next[name]).normalize();
-      lastOffsets.current[name].copy(scratch.next[name]);
-    }
-  });
-
-  return <primitive object={model} dispose={null} />;
-}
-
-function CharacterCanvas() {
-  return (
-    <Canvas
-      camera={{ fov: 28, near: 0.1, far: 60, position: [0, 7.55, 12] }}
-      dpr={[1, 1.5]}
-      gl={{
-        alpha: true,
-        antialias: true,
-        powerPreference: 'high-performance',
-      }}
-      onCreated={({ gl }) => {
-        gl.outputColorSpace = THREE.SRGBColorSpace;
-        gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.08;
-      }}
-    >
-      <ResponsiveCamera />
-      <ambientLight intensity={1.7} />
-      <directionalLight position={[-4, 8, 7]} intensity={3.2} />
-      <directionalLight position={[5, 5, 4]} intensity={1.7} color="#dcecff" />
-      <directionalLight position={[0, 8, -5]} intensity={2.2} color="#fff5ed" />
-      <Suspense fallback={<ModelLoading />}>
-        <CursorMascot />
-      </Suspense>
-    </Canvas>
-  );
-}
-
-export default function Home() {
   return (
     <main className="portfolio-shell">
-      <h1 className="sr-only">Interactive portfolio</h1>
-      <p className="sr-only">
-        An interactive three-dimensional character follows the cursor.
+      <header className="site-header">
+        <span className="wordmark">
+          YOUR NAME<span>®</span>
+        </span>
+        <div className="header-actions">
+          <span className="header-note">Independent by design.</span>
+          <Button
+            className="sound-control"
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={soundEnabled}
+            aria-label={
+              soundEnabled
+                ? 'Turn character voice off'
+                : 'Turn character voice on'
+            }
+          >
+            {soundEnabled ? (
+              <Volume2 aria-hidden="true" />
+            ) : (
+              <VolumeX aria-hidden="true" />
+            )}
+            <span>{soundEnabled ? 'Voice on' : 'Voice off'}</span>
+          </Button>
+        </div>
+      </header>
+
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        Chapter {chapter + 1} of {CHAPTERS.length}: {CHAPTERS[chapter]}
       </p>
 
-      <div className="ambient-orb ambient-orb-left" aria-hidden="true" />
-      <div className="ambient-orb ambient-orb-right" aria-hidden="true" />
+      <div className="content-layer" key={chapter}>
+        <PortfolioContent index={chapter} />
+      </div>
 
-      <section
-        className="glass-stage"
-        aria-label="Interactive portfolio character"
-      >
-        <div className="glass-highlight" aria-hidden="true" />
-        <CharacterCanvas />
-        <div className="lower-glass-fade" aria-hidden="true" />
+      {isTransitioning && (
+        <div
+          className={`shutter shutter--${shutterPhase}`}
+          key={pullSequence}
+          aria-hidden="true"
+          onAnimationEnd={handleShutterAnimationEnd}
+        >
+          <div className="shutter-grip" />
+          <span className="shutter-index">
+            0
+            {(shutterPhase === 'pull'
+              ? (chapter + 1) % CHAPTERS.length
+              : chapter) + 1}
+          </span>
+        </div>
+      )}
+
+      <section className="character-stage" aria-hidden="true">
+        <CharacterCanvas pullSequence={pullSequence} />
       </section>
+
+      <div className="character-controls">
+        <Button
+          className="chest-control"
+          variant="ghost"
+          type="button"
+          aria-disabled={isTransitioning}
+          onClick={showNextChapter}
+          aria-label={`Pull down the next portfolio chapter: ${CHAPTERS[(chapter + 1) % CHAPTERS.length]}`}
+        >
+          <span className="chest-control-ring" aria-hidden="true" />
+          <span className="chest-control-label">Next chapter</span>
+        </Button>
+      </div>
+
+      <footer className="site-footer">
+        <span>Sample portfolio · your story goes here</span>
+        <span>
+          0{chapter + 1} / 03 — {CHAPTERS[chapter]}
+        </span>
+      </footer>
     </main>
   );
 }
-
-useGLTF.preload(MODEL_PATH);
