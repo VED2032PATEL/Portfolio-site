@@ -26,6 +26,12 @@
   --muted-foreground: #697079;
   --border: #d8dde2;
   --ring: #cf273a;
+  --page-glass: linear-gradient(
+    118deg,
+    #edf1f4 0%,
+    #fafbfc 48%,
+    #ffffff 100%
+  );
 }
 
 .dark {
@@ -88,13 +94,16 @@ a:focus-visible {
   min-height: 660px;
   overflow-x: hidden;
   overflow-y: auto;
-  background: linear-gradient(118deg, #edf1f4 0%, #fafbfc 48%, #ffffff 100%);
+  background-color: #ffffff;
+  background-image: var(--page-glass);
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  background-size: 100vw 100svh;
 }
 
 .site-header,
 .site-footer {
   position: absolute;
-  z-index: 7;
   left: 3.5%;
   right: 3.5%;
   display: flex;
@@ -104,6 +113,7 @@ a:focus-visible {
 }
 
 .site-header {
+  z-index: 7;
   top: 2.3rem;
 }
 
@@ -145,6 +155,7 @@ a:focus-visible {
 }
 
 .site-footer {
+  z-index: 2;
   bottom: 1.55rem;
   color: #646c74;
   font-size: 0.75rem;
@@ -154,7 +165,6 @@ a:focus-visible {
   position: absolute;
   z-index: 1;
   inset: 0;
-  animation: content-arrive 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .chapter-layout {
@@ -414,43 +424,32 @@ a:focus-visible {
   inset: 0;
   overflow: hidden;
   transform: translateY(-94%);
-  background:
-    repeating-linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.92) 0,
-      rgba(255, 255, 255, 0.92) 5.3rem,
-      rgba(218, 223, 228, 0.72) 5.35rem,
-      rgba(255, 255, 255, 0.92) 5.45rem
-    ),
-    #f4f6f7;
+  background-color: #ffffff;
+  background-image: var(--page-glass);
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  background-size: 100vw 100svh;
   box-shadow: 0 14px 35px rgba(26, 33, 40, 0.13);
   pointer-events: none;
 }
 
 .shutter--pull {
-  animation: pull-shutter-down 2420ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  animation: pull-shutter-down 4800ms cubic-bezier(0.55, 0, 0.2, 1) both;
 }
 
-.shutter--release {
-  transform: translateY(0);
-  animation: release-shutter 780ms cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-.shutter::before {
+.shutter-content {
   position: absolute;
+  z-index: 1;
   inset: 0;
-  background: linear-gradient(
-    90deg,
-    rgba(220, 225, 230, 0.32),
-    transparent 20%,
-    transparent 80%,
-    rgba(220, 225, 230, 0.32)
-  );
-  content: '';
+}
+
+.shutter--pull .shutter-content {
+  animation: reveal-shutter-content 4800ms linear both;
 }
 
 .shutter-grip {
   position: absolute;
+  z-index: 3;
   right: 0;
   bottom: 0;
   left: 0;
@@ -464,16 +463,8 @@ a:focus-visible {
   box-shadow: 0 4px 10px rgba(18, 23, 28, 0.18);
 }
 
-.shutter-index {
-  position: absolute;
-  right: 4%;
-  bottom: 4rem;
-  color: rgba(40, 46, 52, 0.16);
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(8rem, 20vw, 22rem);
-  font-style: italic;
-  letter-spacing: -0.1em;
-  line-height: 0.8;
+.shutter--pull .shutter-grip {
+  animation: settle-shutter-grip 4800ms linear both;
 }
 
 .model-loading {
@@ -498,35 +489,37 @@ a:focus-visible {
 
 @keyframes pull-shutter-down {
   0%,
-  44.63% {
+  39.17% {
     transform: translateY(-94%);
   }
-  86.78% {
-    transform: translateY(-12.5%);
-  }
-  97.1%,
+
+  64.17%,
   100% {
     transform: translateY(0);
   }
 }
 
-@keyframes release-shutter {
-  from {
-    transform: translateY(0);
+@keyframes reveal-shutter-content {
+  0%,
+  39.17% {
+    opacity: 0;
   }
-  to {
-    transform: translateY(105%);
+
+  42%,
+  100% {
+    opacity: 1;
   }
 }
 
-@keyframes content-arrive {
-  from {
-    transform: translateY(0.75rem);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
+@keyframes settle-shutter-grip {
+  0%,
+  64.17% {
     opacity: 1;
+  }
+
+  72%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -581,7 +574,7 @@ a:focus-visible {
   .portfolio-shell {
     height: auto;
     min-height: 100svh;
-    padding-top: 85svh;
+    padding-top: max(85svh, 480px);
     overflow-x: hidden;
     overflow-y: auto;
   }
@@ -614,6 +607,15 @@ a:focus-visible {
 
   .content-layer {
     position: relative;
+  }
+
+  .shutter-content {
+    top: max(85svh, 480px);
+    bottom: auto;
+  }
+
+  .shutter .site-footer {
+    display: none;
   }
 
   .chapter-layout {
@@ -671,12 +673,15 @@ a:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .content-layer {
+  .shutter--pull,
+  .shutter--pull .shutter-content,
+  .shutter--pull .shutter-grip {
     animation-duration: 1ms;
   }
 
-  .shutter--pull,
-  .shutter--release {
-    animation-duration: 1ms;
+  .chest-control,
+  .chest-control-ring,
+  .chest-control-label {
+    transition: none;
   }
 }

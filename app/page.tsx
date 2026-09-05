@@ -17,19 +17,36 @@ const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
 });
 
 const PROMPT_INTERVAL_MS = 120_000;
+const PULL_ANIMATION_MS = 4_800;
 
-type VoiceCue = 'prompt' | 'slider';
-type ShutterPhase = 'idle' | 'pull' | 'release';
+type VoiceCue = 'prompt' | 'slider' | 'reaction';
+type ShutterPhase = 'idle' | 'pull';
+
+function PageFooter({ chapter }: { chapter: number }) {
+  return (
+    <footer className="site-footer">
+      <span>Sample portfolio · your story goes here</span>
+      <span>
+        0{chapter + 1} / 03 — {CHAPTERS[chapter]}
+      </span>
+    </footer>
+  );
+}
 
 export default function Home() {
   const [chapter, setChapter] = useState(0);
+  const [incomingChapter, setIncomingChapter] = useState<number | null>(null);
   const [pullSequence, setPullSequence] = useState(0);
+  const [speechSequence, setSpeechSequence] = useState(0);
   const [shutterPhase, setShutterPhase] = useState<ShutterPhase>('idle');
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [modelReady, setModelReady] = useState(false);
   const voiceAudio = useRef<HTMLAudioElement | null>(null);
   const audioQueue = useRef<VoiceCue[]>([]);
   const soundEnabledRef = useRef(false);
   const transitioningRef = useRef(false);
+  const shutterPhaseRef = useRef<ShutterPhase>('idle');
   const playCueRef = useRef<(cue: VoiceCue) => void>(() => undefined);
   const isTransitioning = shutterPhase !== 'idle';
 
@@ -43,24 +60,46 @@ export default function Home() {
       if (!soundEnabledRef.current) return;
 
       if (!audio.paused && !audio.ended) {
-        if (!audioQueue.current.includes(cue)) audioQueue.current.push(cue);
-        return;
+        if (cue !== 'reaction') {
+          if (!audioQueue.current.includes(cue)) audioQueue.current.push(cue);
+          return;
+        }
+
+        audioQueue.current = [];
+        audio.pause();
       }
 
-      audio.src =
-        cue === 'prompt' ? '/audio/spidey-hey.mp3' : '/audio/spidey-slider.mp3';
-      audio.volume = cue === 'prompt' ? 0.75 : 0.87;
+      const sources: Record<VoiceCue, string> = {
+        prompt: '/audio/spidey-hey.mp3',
+        slider: '/audio/spidey-slider.mp3',
+        reaction: '/audio/spidey-reaction.mp3',
+      };
+      const volumes: Record<VoiceCue, number> = {
+        prompt: 0.75,
+        slider: 0.87,
+        reaction: 0.85,
+      };
+
+      audio.src = sources[cue];
+      audio.volume = volumes[cue];
       audio.currentTime = 0;
+      setIsSpeaking(true);
+      setSpeechSequence((value) => value + 1);
       void audio.play().catch(() => {
         audioQueue.current = [];
         soundEnabledRef.current = false;
         setSoundEnabled(false);
+        setIsSpeaking(false);
       });
     };
 
     const handleEnded = () => {
       const nextCue = audioQueue.current.shift();
-      if (nextCue) play(nextCue);
+      if (nextCue) {
+        play(nextCue);
+      } else {
+        setIsSpeaking(false);
+      }
     };
 
     playCueRef.current = play;
@@ -87,6 +126,7 @@ export default function Home() {
         audio.pause();
         audio.currentTime = 0;
       }
+      setIsSpeaking(false);
       return;
     }
 
@@ -96,46 +136,52 @@ export default function Home() {
   }, []);
 
   const showNextChapter = useCallback(() => {
-    if (transitioningRef.current) return;
+    if (transitioningRef.current || !modelReady) return;
+
+    const nextChapter = (chapter + 1) % CHAPTERS.length;
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setChapter((value) => (value + 1) % CHAPTERS.length);
+      setChapter(nextChapter);
       playCueRef.current('slider');
       return;
     }
 
     transitioningRef.current = true;
+    shutterPhaseRef.current = 'pull';
+    setIncomingChapter(nextChapter);
     setShutterPhase('pull');
     setPullSequence((value) => value + 1);
+  }, [chapter, modelReady]);
+
+  const handleCursorOverload = useCallback(() => {
+    playCueRef.current('reaction');
   }, []);
+
+  const handleModelReady = useCallback(() => setModelReady(true), []);
+
+  const finishPull = useCallback(() => {
+    if (shutterPhaseRef.current !== 'pull') return;
+    shutterPhaseRef.current = 'idle';
+    if (incomingChapter !== null) setChapter(incomingChapter);
+    playCueRef.current('slider');
+    transitioningRef.current = false;
+    setIncomingChapter(null);
+    setShutterPhase('idle');
+  }, [incomingChapter]);
 
   const handleShutterAnimationEnd = useCallback(
     (event: AnimationEvent<HTMLDivElement>) => {
       if (event.target !== event.currentTarget) return;
-
-      if (shutterPhase === 'pull') {
-        setChapter((value) => (value + 1) % CHAPTERS.length);
-        playCueRef.current('slider');
-        setShutterPhase('release');
-        return;
-      }
-
-      if (shutterPhase === 'release') {
-        transitioningRef.current = false;
-        setShutterPhase('idle');
-      }
+      if (shutterPhaseRef.current === 'pull') finishPull();
     },
-    [shutterPhase],
+    [finishPull],
   );
 
   useEffect(() => {
     if (shutterPhase === 'idle') return;
-    const failSafe = window.setTimeout(() => {
-      transitioningRef.current = false;
-      setShutterPhase('idle');
-    }, 5000);
+    const failSafe = window.setTimeout(finishPull, PULL_ANIMATION_MS + 450);
     return () => window.clearTimeout(failSafe);
-  }, [shutterPhase]);
+  }, [finishPull, shutterPhase]);
 
   useEffect(() => {
     if (!soundEnabled) return;
@@ -192,18 +238,26 @@ export default function Home() {
           aria-hidden="true"
           onAnimationEnd={handleShutterAnimationEnd}
         >
+          <div className="shutter-content">
+            <PortfolioContent
+              index={incomingChapter ?? (chapter + 1) % CHAPTERS.length}
+            />
+          </div>
+          <PageFooter
+            chapter={incomingChapter ?? (chapter + 1) % CHAPTERS.length}
+          />
           <div className="shutter-grip" />
-          <span className="shutter-index">
-            0
-            {(shutterPhase === 'pull'
-              ? (chapter + 1) % CHAPTERS.length
-              : chapter) + 1}
-          </span>
         </div>
       )}
 
       <section className="character-stage" aria-hidden="true">
-        <CharacterCanvas pullSequence={pullSequence} />
+        <CharacterCanvas
+          pullSequence={pullSequence}
+          speechSequence={speechSequence}
+          isSpeaking={isSpeaking}
+          onCursorOverload={handleCursorOverload}
+          onReady={handleModelReady}
+        />
       </section>
 
       <div className="character-controls">
@@ -211,21 +265,18 @@ export default function Home() {
           className="chest-control"
           variant="ghost"
           type="button"
-          aria-disabled={isTransitioning}
+          aria-disabled={isTransitioning || !modelReady}
           onClick={showNextChapter}
           aria-label={`Pull down the next portfolio chapter: ${CHAPTERS[(chapter + 1) % CHAPTERS.length]}`}
         >
           <span className="chest-control-ring" aria-hidden="true" />
-          <span className="chest-control-label">Next chapter</span>
+          <span className="chest-control-label">
+            {modelReady ? 'Next chapter' : 'Loading character'}
+          </span>
         </Button>
       </div>
 
-      <footer className="site-footer">
-        <span>Sample portfolio · your story goes here</span>
-        <span>
-          0{chapter + 1} / 03 — {CHAPTERS[chapter]}
-        </span>
-      </footer>
+      <PageFooter chapter={chapter} />
     </main>
   );
 }
