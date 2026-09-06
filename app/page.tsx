@@ -1,13 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import {
-  type AnimationEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { PortfolioContent, CHAPTERS } from '@/components/portfolio-content';
 import { Button } from '@/components/ui/button';
@@ -17,10 +11,18 @@ const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
 });
 
 const PROMPT_INTERVAL_MS = 120_000;
-const PULL_ANIMATION_MS = 4_800;
+const PULL_FAILSAFE_MS = 8_000;
+const SHUTTER_PULL_START_SECONDS = 3.42;
+const SHUTTER_PULL_END_SECONDS = 4.86;
+const SHUTTER_RELEASE_END_SECONDS = 5.72;
 
 type VoiceCue = 'prompt' | 'slider' | 'reaction';
 type ShutterPhase = 'idle' | 'pull';
+
+function smootherstep(value: number) {
+  const amount = Math.min(1, Math.max(0, value));
+  return amount ** 3 * (amount * (amount * 6 - 15) + 10);
+}
 
 function PageFooter({ chapter }: { chapter: number }) {
   return (
@@ -47,6 +49,7 @@ export default function Home() {
   const soundEnabledRef = useRef(false);
   const transitioningRef = useRef(false);
   const shutterPhaseRef = useRef<ShutterPhase>('idle');
+  const shutterRef = useRef<HTMLDivElement | null>(null);
   const playCueRef = useRef<(cue: VoiceCue) => void>(() => undefined);
   const isTransitioning = shutterPhase !== 'idle';
 
@@ -159,6 +162,42 @@ export default function Home() {
 
   const handleModelReady = useCallback(() => setModelReady(true), []);
 
+  const handlePullFrame = useCallback((elapsedSeconds: number) => {
+    const shutter = shutterRef.current;
+    if (!shutter) return;
+
+    const pullProgress = smootherstep(
+      (elapsedSeconds - SHUTTER_PULL_START_SECONDS) /
+        (SHUTTER_PULL_END_SECONDS - SHUTTER_PULL_START_SECONDS),
+    );
+    const contentOpacity = smootherstep(
+      (elapsedSeconds - (SHUTTER_PULL_START_SECONDS + 0.12)) / 0.5,
+    );
+    const footerOpacity = smootherstep(
+      (elapsedSeconds - (SHUTTER_PULL_END_SECONDS - 0.28)) / 0.28,
+    );
+    const gripOpacity =
+      1 -
+      smootherstep(
+        (elapsedSeconds - SHUTTER_PULL_END_SECONDS) /
+          (SHUTTER_RELEASE_END_SECONDS - SHUTTER_PULL_END_SECONDS),
+      );
+
+    shutter.style.setProperty(
+      '--shutter-translate-y',
+      `${-94 * (1 - pullProgress)}%`,
+    );
+    shutter.style.setProperty(
+      '--shutter-content-opacity',
+      String(contentOpacity),
+    );
+    shutter.style.setProperty(
+      '--shutter-footer-opacity',
+      String(footerOpacity),
+    );
+    shutter.style.setProperty('--shutter-grip-opacity', String(gripOpacity));
+  }, []);
+
   const finishPull = useCallback(() => {
     if (shutterPhaseRef.current !== 'pull') return;
     shutterPhaseRef.current = 'idle';
@@ -169,17 +208,9 @@ export default function Home() {
     setShutterPhase('idle');
   }, [incomingChapter]);
 
-  const handleShutterAnimationEnd = useCallback(
-    (event: AnimationEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) return;
-      if (shutterPhaseRef.current === 'pull') finishPull();
-    },
-    [finishPull],
-  );
-
   useEffect(() => {
     if (shutterPhase === 'idle') return;
-    const failSafe = window.setTimeout(finishPull, PULL_ANIMATION_MS + 450);
+    const failSafe = window.setTimeout(finishPull, PULL_FAILSAFE_MS);
     return () => window.clearTimeout(failSafe);
   }, [finishPull, shutterPhase]);
 
@@ -233,10 +264,10 @@ export default function Home() {
 
       {isTransitioning && (
         <div
+          ref={shutterRef}
           className={`shutter shutter--${shutterPhase}`}
           key={`pull-${pullSequence}`}
           aria-hidden="true"
-          onAnimationEnd={handleShutterAnimationEnd}
         >
           <div className="shutter-content">
             <PortfolioContent
@@ -256,6 +287,8 @@ export default function Home() {
           speechSequence={speechSequence}
           isSpeaking={isSpeaking}
           onCursorOverload={handleCursorOverload}
+          onPullFrame={handlePullFrame}
+          onPullComplete={finishPull}
           onReady={handleModelReady}
         />
       </section>

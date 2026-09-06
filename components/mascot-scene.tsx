@@ -6,7 +6,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-const MODEL_PATH = '/models/mascot_shutter_v2.glb';
+const MODEL_PATH = '/models/mascot_shutter_v3.glb';
 const TRACKED_BONES = ['Torso', 'Head'] as const;
 
 type TrackedBoneName = (typeof TRACKED_BONES)[number];
@@ -143,12 +143,16 @@ function CursorMascot({
   speechSequence,
   isSpeaking,
   onCursorOverload,
+  onPullFrame,
+  onPullComplete,
   onReady,
 }: {
   pullSequence: number;
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
+  onPullFrame: (elapsedSeconds: number) => void;
+  onPullComplete: () => void;
   onReady: () => void;
 }) {
   const { gl } = useThree();
@@ -163,14 +167,22 @@ function CursorMascot({
   const gestureCooldownUntil = useRef(0);
   const pointerSamples = useRef<PointerSample[]>([]);
   const onCursorOverloadRef = useRef(onCursorOverload);
+  const onPullFrameRef = useRef(onPullFrame);
+  const onPullCompleteRef = useRef(onPullComplete);
   const prefersReducedMotion = useRef(false);
   const idleAction = useRef<THREE.AnimationAction | null>(null);
+  const pullAction = useRef<THREE.AnimationAction | null>(null);
   const talkAction = useRef<THREE.AnimationAction | null>(null);
   const lastOffsets = useRef(makeQuaternionSet());
 
   useEffect(() => {
     onCursorOverloadRef.current = onCursorOverload;
   }, [onCursorOverload]);
+
+  useEffect(() => {
+    onPullFrameRef.current = onPullFrame;
+    onPullCompleteRef.current = onPullComplete;
+  }, [onPullComplete, onPullFrame]);
 
   useEffect(() => {
     onReady();
@@ -333,26 +345,39 @@ function CursorMascot({
     const pullClip = gltf.animations.find(
       (clip) => clip.name === 'PullShutter',
     );
-    if (!pullClip) return;
+    if (!pullClip) {
+      onPullCompleteRef.current();
+      return;
+    }
 
     const action = mixer.clipAction(pullClip);
     const handleFinished = (event: { action: THREE.AnimationAction }) => {
       if (event.action !== action) return;
+      onPullFrameRef.current(pullClip.duration);
       isPulling.current = false;
-      action.fadeOut(0.16);
-      idleAction.current?.reset().fadeIn(0.16).play();
+      pullAction.current = null;
+      action.fadeOut(0.28);
+      idleAction.current?.reset().fadeIn(0.34).play();
+      onPullCompleteRef.current();
     };
 
     isPulling.current = true;
-    idleAction.current?.fadeOut(0.12);
+    pullAction.current = action;
+    pointerTarget.current.set(0, 0);
+    pointerSamples.current = [];
+    onPullFrameRef.current(0);
+    idleAction.current?.fadeOut(0.28);
     action.reset();
     action.enabled = true;
     action.clampWhenFinished = true;
     action.setLoop(THREE.LoopOnce, 1);
-    action.fadeIn(0.12).play();
+    action.fadeIn(0.28).play();
     mixer.addEventListener('finished', handleFinished);
 
-    return () => mixer.removeEventListener('finished', handleFinished);
+    return () => {
+      mixer.removeEventListener('finished', handleFinished);
+      if (pullAction.current === action) pullAction.current = null;
+    };
   }, [gltf.animations, mixer, pullSequence]);
 
   useEffect(() => {
@@ -371,11 +396,13 @@ function CursorMascot({
 
     action.reset();
     action.enabled = true;
+    action.setEffectiveTimeScale(0.96 + (speechSequence % 5) * 0.012);
+    action.setEffectiveWeight(1);
     action.setLoop(THREE.LoopRepeat, Infinity);
-    action.fadeIn(0.08).play();
+    action.fadeIn(0.12).play();
 
     return () => {
-      action.fadeOut(0.08);
+      action.fadeOut(0.14);
     };
   }, [gltf.animations, isSpeaking, mixer, speechSequence]);
 
@@ -389,6 +416,10 @@ function CursorMascot({
 
     mixer.update(rawDelta);
 
+    if (isPulling.current && pullAction.current) {
+      onPullFrameRef.current(pullAction.current.time);
+    }
+
     const pointerSmoothing = 1 - Math.exp(-10 * smoothingDelta);
     smoothPointer.current.x +=
       (pointerTarget.current.x - smoothPointer.current.x) * pointerSmoothing;
@@ -398,7 +429,7 @@ function CursorMascot({
       isPulling.current ||
       prefersReducedMotion.current ||
       performance.now() < trackingPausedUntil.current;
-    const blendRate = trackingBlocked ? 14 : 4;
+    const blendRate = trackingBlocked ? 8 : 4;
     cursorBlend.current +=
       ((trackingBlocked ? 0 : 1) - cursorBlend.current) *
       (1 - Math.exp(-blendRate * smoothingDelta));
@@ -432,12 +463,16 @@ export default function CharacterCanvas({
   speechSequence,
   isSpeaking,
   onCursorOverload,
+  onPullFrame,
+  onPullComplete,
   onReady,
 }: {
   pullSequence: number;
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
+  onPullFrame: (elapsedSeconds: number) => void;
+  onPullComplete: () => void;
   onReady: () => void;
 }) {
   return (
@@ -466,6 +501,8 @@ export default function CharacterCanvas({
           speechSequence={speechSequence}
           isSpeaking={isSpeaking}
           onCursorOverload={onCursorOverload}
+          onPullFrame={onPullFrame}
+          onPullComplete={onPullComplete}
           onReady={onReady}
         />
       </Suspense>

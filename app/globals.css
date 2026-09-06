@@ -419,11 +419,15 @@ a:focus-visible {
 }
 
 .shutter {
+  --shutter-translate-y: -94%;
+  --shutter-content-opacity: 0;
+  --shutter-footer-opacity: 0;
+  --shutter-grip-opacity: 1;
   position: fixed;
   z-index: 3;
   inset: 0;
   overflow: hidden;
-  transform: translateY(-94%);
+  transform: translate3d(0, var(--shutter-translate-y), 0);
   background-color: #ffffff;
   background-image: var(--page-glass);
   background-position: 0 0;
@@ -431,20 +435,20 @@ a:focus-visible {
   background-size: 100vw 100svh;
   box-shadow: 0 14px 35px rgba(26, 33, 40, 0.13);
   pointer-events: none;
-}
-
-.shutter--pull {
-  animation: pull-shutter-down 4800ms cubic-bezier(0.55, 0, 0.2, 1) both;
+  will-change: transform;
 }
 
 .shutter-content {
   position: absolute;
   z-index: 1;
   inset: 0;
+  opacity: var(--shutter-content-opacity);
+  will-change: opacity;
 }
 
-.shutter--pull .shutter-content {
-  animation: reveal-shutter-content 4800ms linear both;
+.shutter > .site-footer {
+  opacity: var(--shutter-footer-opacity);
+  will-change: opacity;
 }
 
 .shutter-grip {
@@ -461,10 +465,8 @@ a:focus-visible {
     #174c72 50.4% 100%
   );
   box-shadow: 0 4px 10px rgba(18, 23, 28, 0.18);
-}
-
-.shutter--pull .shutter-grip {
-  animation: settle-shutter-grip 4800ms linear both;
+  opacity: var(--shutter-grip-opacity);
+  will-change: opacity;
 }
 
 .model-loading {
@@ -485,42 +487,6 @@ a:focus-visible {
   height: 6px;
   border-radius: 50%;
   background: var(--primary);
-}
-
-@keyframes pull-shutter-down {
-  0%,
-  39.17% {
-    transform: translateY(-94%);
-  }
-
-  64.17%,
-  100% {
-    transform: translateY(0);
-  }
-}
-
-@keyframes reveal-shutter-content {
-  0%,
-  39.17% {
-    opacity: 0;
-  }
-
-  42%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes settle-shutter-grip {
-  0%,
-  64.17% {
-    opacity: 1;
-  }
-
-  72%,
-  100% {
-    opacity: 0;
-  }
 }
 
 @media (min-width: 1700px) {
@@ -673,12 +639,6 @@ a:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shutter--pull,
-  .shutter--pull .shutter-content,
-  .shutter--pull .shutter-grip {
-    animation-duration: 1ms;
-  }
-
   .chest-control,
   .chest-control-ring,
   .chest-control-label {
