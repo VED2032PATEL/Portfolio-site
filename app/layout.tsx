@@ -12,9 +12,15 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-const siteUrl = new URL('https://cursor-mascot-portfolio.yyyyue.chatgpt.site');
+const deploymentHost =
+  process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+const siteUrl = new URL(
+  process.env.SITE_URL ||
+    (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000'),
+);
 
 export const metadata: Metadata = {
+  icons: { icon: '/favicon.svg' },
   metadataBase: siteUrl,
   title: 'Interactive Portfolio',
   description:
