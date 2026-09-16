@@ -11,10 +11,12 @@ const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
 });
 
 const PROMPT_INTERVAL_MS = 120_000;
-const PULL_FAILSAFE_MS = 8_000;
-const SHUTTER_PULL_START_SECONDS = 3.42;
-const SHUTTER_PULL_END_SECONDS = 4.86;
-const SHUTTER_RELEASE_END_SECONDS = 5.72;
+const PULL_FAILSAFE_MS = 13_000;
+const SHUTTER_PULL_START_SECONDS = 4.15;
+const SHUTTER_PULL_END_SECONDS = 8.5;
+const SHUTTER_RELEASE_END_SECONDS = 9.05;
+const SHUTTER_REST_VIEWPORT_Y = 0.012;
+const SHUTTER_GRIP_OFFSET = 0.015;
 
 type VoiceCue = 'prompt' | 'slider' | 'reaction';
 type ShutterPhase = 'idle' | 'pull';
@@ -50,6 +52,7 @@ export default function Home() {
   const transitioningRef = useRef(false);
   const shutterPhaseRef = useRef<ShutterPhase>('idle');
   const shutterRef = useRef<HTMLDivElement | null>(null);
+  const shutterProgressRef = useRef(0);
   const playCueRef = useRef<(cue: VoiceCue) => void>(() => undefined);
   const isTransitioning = shutterPhase !== 'idle';
 
@@ -151,6 +154,7 @@ export default function Home() {
 
     transitioningRef.current = true;
     shutterPhaseRef.current = 'pull';
+    shutterProgressRef.current = 0;
     setIncomingChapter(nextChapter);
     setShutterPhase('pull');
     setPullSequence((value) => value + 1);
@@ -162,41 +166,63 @@ export default function Home() {
 
   const handleModelReady = useCallback(() => setModelReady(true), []);
 
-  const handlePullFrame = useCallback((elapsedSeconds: number) => {
-    const shutter = shutterRef.current;
-    if (!shutter) return;
+  const handlePullFrame = useCallback(
+    (elapsedSeconds: number, gripViewportY?: number) => {
+      const shutter = shutterRef.current;
+      if (!shutter) return;
 
-    const pullProgress = smootherstep(
-      (elapsedSeconds - SHUTTER_PULL_START_SECONDS) /
-        (SHUTTER_PULL_END_SECONDS - SHUTTER_PULL_START_SECONDS),
-    );
-    const contentOpacity = smootherstep(
-      (elapsedSeconds - (SHUTTER_PULL_START_SECONDS + 0.12)) / 0.5,
-    );
-    const footerOpacity = smootherstep(
-      (elapsedSeconds - (SHUTTER_PULL_END_SECONDS - 0.28)) / 0.28,
-    );
-    const gripOpacity =
-      1 -
-      smootherstep(
-        (elapsedSeconds - SHUTTER_PULL_END_SECONDS) /
-          (SHUTTER_RELEASE_END_SECONDS - SHUTTER_PULL_END_SECONDS),
+      const measuredProgress =
+        elapsedSeconds < SHUTTER_PULL_START_SECONDS
+          ? 0
+          : elapsedSeconds >= SHUTTER_PULL_END_SECONDS
+            ? 1
+            : Number.isFinite(gripViewportY)
+              ? Math.min(
+                  1,
+                  Math.max(
+                    0,
+                    ((gripViewportY ?? 0) +
+                      SHUTTER_GRIP_OFFSET -
+                      SHUTTER_REST_VIEWPORT_Y) /
+                      (1 - SHUTTER_REST_VIEWPORT_Y),
+                  ),
+                )
+              : smootherstep(
+                  (elapsedSeconds - SHUTTER_PULL_START_SECONDS) /
+                    (SHUTTER_PULL_END_SECONDS - SHUTTER_PULL_START_SECONDS),
+                );
+      const pullProgress = Math.max(
+        shutterProgressRef.current,
+        measuredProgress,
       );
+      shutterProgressRef.current = pullProgress;
+      const shutterViewportY =
+        SHUTTER_REST_VIEWPORT_Y + (1 - SHUTTER_REST_VIEWPORT_Y) * pullProgress;
+      const contentOpacity = smootherstep((pullProgress - 0.04) / 0.18);
+      const footerOpacity = smootherstep((pullProgress - 0.82) / 0.18);
+      const gripOpacity =
+        1 -
+        smootherstep(
+          (elapsedSeconds - SHUTTER_PULL_END_SECONDS) /
+            (SHUTTER_RELEASE_END_SECONDS - SHUTTER_PULL_END_SECONDS),
+        );
 
-    shutter.style.setProperty(
-      '--shutter-translate-y',
-      `${-94 * (1 - pullProgress)}%`,
-    );
-    shutter.style.setProperty(
-      '--shutter-content-opacity',
-      String(contentOpacity),
-    );
-    shutter.style.setProperty(
-      '--shutter-footer-opacity',
-      String(footerOpacity),
-    );
-    shutter.style.setProperty('--shutter-grip-opacity', String(gripOpacity));
-  }, []);
+      shutter.style.setProperty(
+        '--shutter-translate-y',
+        `${(shutterViewportY - 1) * 100}%`,
+      );
+      shutter.style.setProperty(
+        '--shutter-content-opacity',
+        String(contentOpacity),
+      );
+      shutter.style.setProperty(
+        '--shutter-footer-opacity',
+        String(footerOpacity),
+      );
+      shutter.style.setProperty('--shutter-grip-opacity', String(gripOpacity));
+    },
+    [],
+  );
 
   const finishPull = useCallback(() => {
     if (shutterPhaseRef.current !== 'pull') return;

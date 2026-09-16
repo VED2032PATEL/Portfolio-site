@@ -26,12 +26,7 @@
   --muted-foreground: #697079;
   --border: #d8dde2;
   --ring: #cf273a;
-  --page-glass: linear-gradient(
-    118deg,
-    #edf1f4 0%,
-    #fafbfc 48%,
-    #ffffff 100%
-  );
+  --page-glass: linear-gradient(118deg, #edf1f4 0%, #fafbfc 48%, #ffffff 100%);
 }
 
 .dark {
@@ -419,7 +414,7 @@ a:focus-visible {
 }
 
 .shutter {
-  --shutter-translate-y: -94%;
+  --shutter-translate-y: -98.8%;
   --shutter-content-opacity: 0;
   --shutter-footer-opacity: 0;
   --shutter-grip-opacity: 1;

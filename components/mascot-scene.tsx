@@ -6,8 +6,18 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-const MODEL_PATH = '/models/mascot_shutter_v3.glb';
+const MODEL_PATH = '/models/mascot_shutter_v4.glb';
 const TRACKED_BONES = ['Torso', 'Head'] as const;
+const GRIP_BONE_NAMES = [
+  'Index_01_L',
+  'Middle_01_L',
+  'Ring_01_L',
+  'Pinky_01_L',
+  'Index_01_R',
+  'Middle_01_R',
+  'Ring_01_R',
+  'Pinky_01_R',
+] as const;
 
 type TrackedBoneName = (typeof TRACKED_BONES)[number];
 type TrackedBones = Record<TrackedBoneName, THREE.Bone>;
@@ -151,11 +161,11 @@ function CursorMascot({
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
-  onPullFrame: (elapsedSeconds: number) => void;
+  onPullFrame: (elapsedSeconds: number, gripViewportY?: number) => void;
   onPullComplete: () => void;
   onReady: () => void;
 }) {
-  const { gl } = useThree();
+  const { camera, gl } = useThree();
   const gltf = useGLTF(MODEL_PATH);
   const model = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
@@ -206,10 +216,24 @@ function CursorMascot({
     return result;
   }, [model]);
 
+  const gripBones = useMemo(
+    () =>
+      GRIP_BONE_NAMES.map((name) => {
+        const object = model.getObjectByName(name);
+        if (!(object instanceof THREE.Bone)) {
+          throw new Error(`The model is missing the required ${name} bone.`);
+        }
+        return object;
+      }),
+    [model],
+  );
+
   const scratch = useMemo(
     () => ({
       inverse: new THREE.Quaternion(),
       euler: new THREE.Euler(0, 0, 0, 'YXZ'),
+      gripWorld: new THREE.Vector3(),
+      gripProjected: new THREE.Vector3(),
       next: makeQuaternionSet(),
     }),
     [],
@@ -417,7 +441,16 @@ function CursorMascot({
     mixer.update(rawDelta);
 
     if (isPulling.current && pullAction.current) {
-      onPullFrameRef.current(pullAction.current.time);
+      let gripViewportY = 0;
+      for (const gripBone of gripBones) {
+        gripBone.getWorldPosition(scratch.gripWorld);
+        scratch.gripProjected.copy(scratch.gripWorld).project(camera);
+        gripViewportY += (1 - scratch.gripProjected.y) * 0.5;
+      }
+      onPullFrameRef.current(
+        pullAction.current.time,
+        gripViewportY / gripBones.length,
+      );
     }
 
     const pointerSmoothing = 1 - Math.exp(-10 * smoothingDelta);
@@ -471,7 +504,7 @@ export default function CharacterCanvas({
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
-  onPullFrame: (elapsedSeconds: number) => void;
+  onPullFrame: (elapsedSeconds: number, gripViewportY?: number) => void;
   onPullComplete: () => void;
   onReady: () => void;
 }) {
