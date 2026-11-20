@@ -4,6 +4,7 @@ This is the user's portfolio website. Its canonical repository is
 https://github.com/VED2032PATEL/Portfolio-site.
 
 - Make future portfolio website changes in this checkout.
+- Do not publish Ved's CGPA or the original resume PDF that contains it.
 - Use `origin` for the GitHub repository and track `origin/main`.
 - The user requested that completed future website changes be committed and
   pushed to this repository after appropriate validation. Preserve unrelated

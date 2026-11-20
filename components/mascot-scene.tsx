@@ -171,6 +171,8 @@ function CursorMascot({
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
   const pointerTarget = useRef(new THREE.Vector2());
   const smoothPointer = useRef(new THREE.Vector2());
+  const pointerVelocity = useRef(new THREE.Vector2());
+  const torsoPointer = useRef(new THREE.Vector2());
   const cursorBlend = useRef(1);
   const isPulling = useRef(false);
   const trackingPausedUntil = useRef(0);
@@ -246,6 +248,8 @@ function CursorMascot({
       if (media.matches) {
         pointerTarget.current.set(0, 0);
         smoothPointer.current.set(0, 0);
+        pointerVelocity.current.set(0, 0);
+        torsoPointer.current.set(0, 0);
         pointerSamples.current = [];
         idleAction.current?.stop();
         talkAction.current?.stop();
@@ -380,8 +384,8 @@ function CursorMascot({
       onPullFrameRef.current(pullClip.duration);
       isPulling.current = false;
       pullAction.current = null;
-      action.fadeOut(0.28);
-      idleAction.current?.reset().fadeIn(0.34).play();
+      action.fadeOut(0.5);
+      idleAction.current?.reset().fadeIn(0.5).play();
       onPullCompleteRef.current();
     };
 
@@ -390,12 +394,13 @@ function CursorMascot({
     pointerTarget.current.set(0, 0);
     pointerSamples.current = [];
     onPullFrameRef.current(0);
-    idleAction.current?.fadeOut(0.28);
+    idleAction.current?.fadeOut(0.45);
     action.reset();
     action.enabled = true;
     action.clampWhenFinished = true;
+    action.setEffectiveTimeScale(0.85);
     action.setLoop(THREE.LoopOnce, 1);
-    action.fadeIn(0.28).play();
+    action.fadeIn(0.45).play();
     mixer.addEventListener('finished', handleFinished);
 
     return () => {
@@ -438,7 +443,10 @@ function CursorMascot({
       bones[name].quaternion.multiply(scratch.inverse).normalize();
     }
 
-    mixer.update(rawDelta);
+    // Keep clip and shutter on the same clock; resuming a hidden tab must not
+    // skip straight from reaching to release.
+    const animationDelta = document.hidden ? 0 : Math.min(rawDelta, 0.05);
+    mixer.update(animationDelta);
 
     if (isPulling.current && pullAction.current) {
       let gripViewportY = 0;
@@ -449,15 +457,28 @@ function CursorMascot({
       }
       onPullFrameRef.current(
         pullAction.current.time,
-        gripViewportY / gripBones.length,
+        (gl.domElement.getBoundingClientRect().top +
+          (gripViewportY / gripBones.length) * gl.domElement.clientHeight) /
+          window.innerHeight,
       );
     }
 
-    const pointerSmoothing = 1 - Math.exp(-10 * smoothingDelta);
-    smoothPointer.current.x +=
-      (pointerTarget.current.x - smoothPointer.current.x) * pointerSmoothing;
-    smoothPointer.current.y +=
-      (pointerTarget.current.y - smoothPointer.current.y) * pointerSmoothing;
+    // Exact critically damped spring: continuous velocity at cursor reversals,
+    // no overshoot. The chest follows a little later than the head.
+    const decay = Math.exp(-10 * smoothingDelta);
+    for (const axis of ['x', 'y'] as const) {
+      const displacement =
+        smoothPointer.current[axis] - pointerTarget.current[axis];
+      const impulse =
+        (pointerVelocity.current[axis] + 10 * displacement) * smoothingDelta;
+      smoothPointer.current[axis] =
+        pointerTarget.current[axis] + (displacement + impulse) * decay;
+      pointerVelocity.current[axis] =
+        (pointerVelocity.current[axis] - 10 * impulse) * decay;
+      torsoPointer.current[axis] +=
+        (smoothPointer.current[axis] - torsoPointer.current[axis]) *
+        (1 - Math.exp(-5 * smoothingDelta));
+    }
     const trackingBlocked =
       isPulling.current ||
       prefersReducedMotion.current ||
@@ -471,7 +492,15 @@ function CursorMascot({
     const pitch = smoothPointer.current.y * MAX_PITCH * cursorBlend.current;
 
     scratch.next.Torso.setFromEuler(
-      scratch.euler.set(-pitch * TORSO_WEIGHT, yaw * TORSO_WEIGHT, 0, 'YXZ'),
+      scratch.euler.set(
+        -torsoPointer.current.y *
+          MAX_PITCH *
+          cursorBlend.current *
+          TORSO_WEIGHT,
+        torsoPointer.current.x * MAX_YAW * cursorBlend.current * TORSO_WEIGHT,
+        0,
+        'YXZ',
+      ),
     );
     scratch.next.Head.setFromEuler(
       scratch.euler.set(

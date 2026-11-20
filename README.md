@@ -2,7 +2,9 @@
 
 Interactive portfolio featuring a rigged Spider-Man character, cursor tracking,
 voice reactions, and a character-driven shutter transition between chapters.
-Portfolio copy is sample content to replace later.
+Portfolio chapters cover Ved Patel's projects, background, skills, and contact
+details, based on his resume. CGPA is intentionally omitted; the original resume
+PDF is not published.
 
 ## Run locally
 

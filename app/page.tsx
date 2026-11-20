@@ -11,7 +11,6 @@ const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
 });
 
 const PROMPT_INTERVAL_MS = 120_000;
-const PULL_FAILSAFE_MS = 13_000;
 const SHUTTER_PULL_START_SECONDS = 4.15;
 const SHUTTER_PULL_END_SECONDS = 8.5;
 const SHUTTER_RELEASE_END_SECONDS = 9.05;
@@ -29,9 +28,9 @@ function smootherstep(value: number) {
 function PageFooter({ chapter }: { chapter: number }) {
   return (
     <footer className="site-footer">
-      <span>Sample portfolio · your story goes here</span>
+      <span>Ved Patel · Code, curiosity, and a little character.</span>
       <span>
-        0{chapter + 1} / 03 — {CHAPTERS[chapter]}
+        0{chapter + 1} / 0{CHAPTERS.length} — {CHAPTERS[chapter]}
       </span>
     </footer>
   );
@@ -235,12 +234,6 @@ export default function Home() {
   }, [incomingChapter]);
 
   useEffect(() => {
-    if (shutterPhase === 'idle') return;
-    const failSafe = window.setTimeout(finishPull, PULL_FAILSAFE_MS);
-    return () => window.clearTimeout(failSafe);
-  }, [finishPull, shutterPhase]);
-
-  useEffect(() => {
     if (!soundEnabled) return;
     const promptTimer = window.setInterval(
       () => playCueRef.current('prompt'),
@@ -253,10 +246,10 @@ export default function Home() {
     <main className="portfolio-shell">
       <header className="site-header">
         <span className="wordmark">
-          YOUR NAME<span>®</span>
+          VED PATEL<span>·</span>
         </span>
         <div className="header-actions">
-          <span className="header-note">Independent by design.</span>
+          <span className="header-note">AI, software & curiosity.</span>
           <Button
             className="sound-control"
             variant="outline"
@@ -294,6 +287,7 @@ export default function Home() {
           className={`shutter shutter--${shutterPhase}`}
           key={`pull-${pullSequence}`}
           aria-hidden="true"
+          inert
         >
           <div className="shutter-content">
             <PortfolioContent

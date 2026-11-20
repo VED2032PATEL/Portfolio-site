@@ -1,4 +1,37 @@
-export const CHAPTERS = ['About', 'Selected work', 'Say hello'] as const;
+export const CHAPTERS = ['About', 'Projects', 'My story', 'Contact'] as const;
+
+const projects = [
+  {
+    name: 'StudyFlow',
+    label: 'Student guidance · Full stack',
+    url: 'https://github.com/VED2032PATEL/StudyFlow-Polished',
+    description:
+      'Study plans shaped around available hours, topic difficulty, and deadlines. Built as my college minor project.',
+    detail:
+      'AI-assisted guidance, practice questions, spaced revision, progress analytics, and social learning.',
+    stack: 'Python · Flask · JavaScript · SQLite · Groq',
+  },
+  {
+    name: 'U2.7 / ULTRON',
+    label: 'Desktop automation · AI assistant',
+    url: 'https://github.com/VED2032PATEL/U2.7',
+    description:
+      'A local-first desktop assistant with voice conversations, task planning, and a reactive 3D interface.',
+    detail:
+      'Personalized memory and tool execution for app control, research, and file workflows, with validation, safeguards, and pause/resume controls.',
+    stack: 'Python · JavaScript · Three.js · pywebview · Deepgram',
+  },
+  {
+    name: 'MemoryForge',
+    label: 'Machine learning · Team BitWise',
+    url: 'https://github.com/VED2032PATEL/MemoryForge',
+    description:
+      'An associative-memory lab built with Team BitWise for DataForge 2026. New associations, frozen encoder weights.',
+    detail:
+      'Evaluated across 50 seeds and 650 conditions. Mean held-out digit query accuracy: 98.07% with ten clean demonstrations per class; zero encoder parameter change.',
+    stack: 'PyTorch · Streamlit · NumPy · scikit-learn · Plotly',
+  },
+];
 
 export function PortfolioContent({ index }: { index: number }) {
   return (
@@ -7,124 +40,204 @@ export function PortfolioContent({ index }: { index: number }) {
         <p className="eyebrow">
           {
             [
-              'A little introduction',
-              'Ideas, made real',
-              'The next good thing',
+              'Ved Patel · Developer',
+              'Selected projects',
+              'Learning through building',
+              'Let’s connect',
             ][index]
           }
         </p>
         <h1>
           {index === 0 && (
             <>
-              Digital.
+              Curious.
               <br />
-              <span className="serif-word">Human.</span>
+              <span className="serif-word">By design.</span>
               <br />
-              Always
+              Builder.
               <br />
-              curious.
+              By doing.
             </>
           )}
           {index === 1 && (
             <>
-              Made to
+              Ideas into
               <br />
-              <span className="serif-word">matter.</span>
+              <span className="serif-word">working</span>
+              <br />
+              software.
             </>
           )}
           {index === 2 && (
             <>
-              Have a<br />
-              <span className="serif-word">wild idea?</span>
+              Build.
+              <br />
+              <span className="serif-word">Question.</span>
+              <br />
+              Repeat.
+            </>
+          )}
+          {index === 3 && (
+            <>
+              Let’s build
+              <br />
+              <span className="serif-word">something</span>
+              <br />
+              useful.
             </>
           )}
         </h1>
         <p className="chapter-intro">
           {
             [
-              'A designer & developer exploring the space between thoughtful design and playful technology.',
-              'A few experiments in identity, digital experiences, and the small details that make them memorable.',
-              'Let’s turn that thing you can’t stop thinking about into something people can experience.',
+              'I’m Ved, a Computer Science student building AI assistants, full-stack applications, and machine learning experiments with Python and JavaScript.',
+              'From helping students plan their learning to making desktop workflows conversational, I turn practical problems into software I can test and improve.',
+              'My work connects three questions: how can software help us learn, make everyday tasks easier, and make AI behavior easier to understand?',
+              'Have a project, an internship opportunity, or an experiment worth exploring? I’d love to hear about it.',
             ][index]
           }
         </p>
+        <p className="chapter-hint">
+          Click the spider emblem to turn the page.
+        </p>
       </section>
-      <section className="chapter-right" aria-label={CHAPTERS[index]}>
+      <section
+        className="chapter-right"
+        aria-label={CHAPTERS[index]}
+        // Keyboard users need to focus this scrollable region to read its content.
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+      >
         <span className="chapter-number">
           0{index + 1}
-          <span> / 03</span>
+          <span> / 0{CHAPTERS.length}</span>
         </span>
         {index === 0 && (
           <>
-            <p className="eyebrow">Thoughtful work. A playful spirit.</p>
+            <p className="eyebrow">Practical problems. Playful interfaces.</p>
             <h2>
-              Good design
-              <br />
-              has a <em>personality.</em>
+              AI with a<br />
+              <em>useful purpose.</em>
             </h2>
             <p>
-              I build brands and digital experiences with clarity, craft, and a
-              little unexpected delight.
+              I build across the interface and the logic behind it: study
+              guidance, desktop automation, and reproducible ML experiments.
             </p>
             <div className="detail-list">
               <p>
-                <span>01</span> Design & direction
+                <span>BUILD</span>Python, JavaScript, Flask, SQL
               </p>
               <p>
-                <span>02</span> Creative development
+                <span>EXPLORE</span>PyTorch, scikit-learn, NumPy
               </p>
               <p>
-                <span>03</span> Interactive experiences
+                <span>CONNECT</span>APIs, voice, Three.js interfaces
               </p>
             </div>
-            <p className="availability">
-              <span /> Open to interesting collaborations
+            <p className="education-note">
+              B.Tech · Computer Science & Engineering
+              <br />
+              Shri Ram Institute of Technology
+              <br />
+              Jabalpur, Madhya Pradesh
             </p>
           </>
         )}
         {index === 1 && (
           <>
-            <p className="eyebrow">Selected explorations</p>
-            <div className="project-item">
-              <span>01 — BRAND & DIGITAL</span>
-              <h2>Orbit Studio</h2>
-              <p>A fresh identity for ideas that refuse to stand still.</p>
-            </div>
-            <div className="project-item">
-              <span>02 — WEB EXPERIENCE</span>
-              <h2>Forma Objects</h2>
-              <p>A quiet digital home for everyday objects with character.</p>
-            </div>
-            <div className="project-item">
-              <span>03 — CREATIVE CODE</span>
-              <h2>The Playground</h2>
-              <p>Small experiments. New possibilities. Plenty of curiosity.</p>
-            </div>
+            <p className="eyebrow">Built, tested, and still evolving</p>
+            {projects.map((project) => (
+              <article className="project-item" key={project.name}>
+                <span>{project.label}</span>
+                <h2>
+                  <a href={project.url} target="_blank" rel="noreferrer">
+                    {project.name}
+                  </a>
+                </h2>
+                <p>{project.description}</p>
+                <details>
+                  <summary>Inside the project</summary>
+                  <p>{project.detail}</p>
+                  <p className="project-stack">{project.stack}</p>
+                </details>
+              </article>
+            ))}
           </>
         )}
         {index === 2 && (
           <>
-            <p className="eyebrow">Start a conversation</p>
+            <p className="eyebrow">From student projects to experiments</p>
             <h2>
-              Something great
+              A practice of
               <br />
-              starts with <em>hello.</em>
+              <em>making things work.</em>
             </h2>
             <p>
-              New projects, collaborations, or a good conversation. There’s room
-              for all of them.
+              StudyFlow brought planning, guidance, and progress into one
+              student tool. With U2.7, I explored voice, memory, and multi-step
+              desktop tasks.
             </p>
-            <p className="sample-email">hello@example.com</p>
-            <div className="detail-list">
-              <p>
-                <span>BASED</span> Somewhere on Earth
-              </p>
-              <p>
-                <span>WORKING</span> Everywhere, together
-              </p>
+            <p>
+              Working with Team BitWise on MemoryForge added another discipline:
+              repeat the experiment, inspect the results, and make the behavior
+              visible.
+            </p>
+            <details className="learning-details">
+              <summary>Continuing my learning</summary>
+              <ul>
+                <li>
+                  AI-first Software Engineering — Infosys Springboard, October
+                  2026
+                </li>
+                <li>Prompt Engineering — Infosys Springboard, October 2026</li>
+                <li>
+                  Fundamentals of Information Security — Infosys Springboard,
+                  October 2026
+                </li>
+                <li>
+                  Claude Platform 101 & Claude Code 101 — Claude Academy,
+                  October 2026
+                </li>
+              </ul>
+            </details>
+          </>
+        )}
+        {index === 3 && (
+          <>
+            <p className="eyebrow">A conversation is a good start</p>
+            <h2>
+              Bring a problem.
+              <br />
+              <em>Let’s explore it.</em>
+            </h2>
+            <p>
+              I’m interested in AI applications, full-stack development, and
+              thoughtful automation. You can find my code on GitHub or reach me
+              directly.
+            </p>
+            <a className="sample-email" href="mailto:ved2032patel@gmail.com">
+              ved2032patel@gmail.com
+            </a>
+            <div className="contact-links">
+              <a
+                href="https://github.com/VED2032PATEL"
+                target="_blank"
+                rel="noreferrer"
+              >
+                GitHub
+              </a>
+              <a
+                href="https://www.linkedin.com/in/mortemxos/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                LinkedIn
+              </a>
             </div>
-            <p className="availability">
-              <span /> Available for the right project
+            <p className="education-note">
+              Studying Computer Science
+              <br />
+              Shri Ram Institute of Technology, Jabalpur
             </p>
           </>
         )}

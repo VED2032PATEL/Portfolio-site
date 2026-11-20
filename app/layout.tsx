@@ -22,27 +22,28 @@ const siteUrl = new URL(
 export const metadata: Metadata = {
   icons: { icon: '/favicon.svg' },
   metadataBase: siteUrl,
-  title: 'Interactive Portfolio',
+  title: 'Ved Patel | AI & Software Developer',
   description:
-    'An interactive portfolio experience with a cursor-responsive 3D character.',
+    'Ved Patel — Computer Science student building AI assistants, full-stack applications, and reproducible machine learning experiments. Explore StudyFlow, U2.7, and MemoryForge.',
   openGraph: {
     type: 'website',
     url: siteUrl,
-    title: 'Interactive Portfolio',
-    description: 'A cursor-responsive 3D experience',
+    title: 'Ved Patel | AI & Software Developer',
+    description:
+      'Practical AI, thoughtful automation, and software built through curiosity.',
     images: [
       {
         url: '/og.png',
         width: 1200,
         height: 630,
-        alt: 'Interactive Portfolio — a cursor-responsive 3D experience',
+        alt: 'Ved Patel — interactive developer portfolio',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Interactive Portfolio',
-    description: 'A cursor-responsive 3D experience',
+    title: 'Ved Patel | AI & Software Developer',
+    description: 'Explore StudyFlow, U2.7, and MemoryForge.',
     images: ['/og.png'],
   },
 };
