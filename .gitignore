@@ -37,3 +37,6 @@ next-env.d.ts
 /outputs/
 /work/
 /.sites-runtime/
+__pycache__/
+*.pyc
+*.tsbuildinfo

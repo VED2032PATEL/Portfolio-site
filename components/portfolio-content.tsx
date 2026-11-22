@@ -98,16 +98,10 @@ export function PortfolioContent({ index }: { index: number }) {
           }
         </p>
         <p className="chapter-hint">
-          Click the spider emblem to turn the page.
+          Scroll to explore. Click the spider emblem for the next chapter.
         </p>
       </section>
-      <section
-        className="chapter-right"
-        aria-label={CHAPTERS[index]}
-        // Keyboard users need to focus this scrollable region to read its content.
-        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={0}
-      >
+      <section className="chapter-right" aria-label={CHAPTERS[index]}>
         <span className="chapter-number">
           0{index + 1}
           <span> / 0{CHAPTERS.length}</span>

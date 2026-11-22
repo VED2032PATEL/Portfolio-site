@@ -5,19 +5,17 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import {
+  motionDelta,
+  WEB_PULL,
+  webPullProgress,
+  smoothstep,
+} from '@/lib/mascot-motion';
+import { WebTethers } from './web-tethers';
 
-const MODEL_PATH = '/models/mascot_shutter_v4.glb';
+const MODEL_PATH = '/models/mascot_web_pull.glb';
 const TRACKED_BONES = ['Torso', 'Head'] as const;
-const GRIP_BONE_NAMES = [
-  'Index_01_L',
-  'Middle_01_L',
-  'Ring_01_L',
-  'Pinky_01_L',
-  'Index_01_R',
-  'Middle_01_R',
-  'Ring_01_R',
-  'Pinky_01_R',
-] as const;
+const GRIP_BONE_NAMES = ['Hand_L', 'Hand_R'] as const;
 
 type TrackedBoneName = (typeof TRACKED_BONES)[number];
 type TrackedBones = Record<TrackedBoneName, THREE.Bone>;
@@ -161,7 +159,7 @@ function CursorMascot({
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
-  onPullFrame: (elapsedSeconds: number, gripViewportY?: number) => void;
+  onPullFrame: (elapsedSeconds: number, progress?: number) => void;
   onPullComplete: () => void;
   onReady: () => void;
 }) {
@@ -169,6 +167,27 @@ function CursorMascot({
   const gltf = useGLTF(MODEL_PATH);
   const model = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
   const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
+  const webs = useMemo(() => new WebTethers(), []);
+  const pullProgress = useRef(0);
+  useEffect(() => () => webs.dispose(), [webs]);
+  const webTravel = useMemo(() => {
+    // Sample the actual exported skeleton, not guessed screen coordinates.
+    const sample = SkeletonUtils.clone(gltf.scene);
+    const clip = gltf.animations.find((item) => item.name === 'PullShutter');
+    if (!clip) return null;
+    const sampleMixer = new THREE.AnimationMixer(sample);
+    sampleMixer.clipAction(clip).play();
+    const poses = [WEB_PULL.pull, WEB_PULL.land].map((time) => {
+      sampleMixer.setTime(time);
+      sample.updateMatrixWorld(true);
+      return GRIP_BONE_NAMES.map((name) =>
+        sample.getObjectByName(name)!.getWorldPosition(new THREE.Vector3()),
+      );
+    });
+    sampleMixer.stopAllAction();
+    sampleMixer.uncacheRoot(sample);
+    return poses;
+  }, [gltf.scene, gltf.animations]);
   const pointerTarget = useRef(new THREE.Vector2());
   const smoothPointer = useRef(new THREE.Vector2());
   const pointerVelocity = useRef(new THREE.Vector2());
@@ -186,6 +205,15 @@ function CursorMascot({
   const pullAction = useRef<THREE.AnimationAction | null>(null);
   const talkAction = useRef<THREE.AnimationAction | null>(null);
   const lastOffsets = useRef(makeQuaternionSet());
+  const resumeFrame = useRef(false);
+
+  useEffect(() => {
+    const markResume = () => {
+      resumeFrame.current = true;
+    };
+    document.addEventListener('visibilitychange', markResume);
+    return () => document.removeEventListener('visibilitychange', markResume);
+  }, []);
 
   useEffect(() => {
     onCursorOverloadRef.current = onCursorOverload;
@@ -234,12 +262,25 @@ function CursorMascot({
     () => ({
       inverse: new THREE.Quaternion(),
       euler: new THREE.Euler(0, 0, 0, 'YXZ'),
-      gripWorld: new THREE.Vector3(),
+      handWorld: [new THREE.Vector3(), new THREE.Vector3()],
+      emitterWorld: [new THREE.Vector3(), new THREE.Vector3()],
       gripProjected: new THREE.Vector3(),
       next: makeQuaternionSet(),
     }),
     [],
   );
+
+  const emitters = useMemo(() => {
+    model.updateMatrixWorld(true);
+    return ['L', 'R'].map((side, index) => {
+      const bone = model.getObjectByName(`Forearm_${side}`)!;
+      const position = gripBones[index].getWorldPosition(new THREE.Vector3());
+      // On the suit's wrist-shooter surface, slightly proximal to the hand.
+      position.y += 0.08;
+      position.z += 0.19;
+      return { bone, local: bone.worldToLocal(position) };
+    });
+  }, [model, gripBones]);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -381,33 +422,35 @@ function CursorMascot({
     const action = mixer.clipAction(pullClip);
     const handleFinished = (event: { action: THREE.AnimationAction }) => {
       if (event.action !== action) return;
-      onPullFrameRef.current(pullClip.duration);
+      onPullFrameRef.current(pullClip.duration, 1);
+      webs.hide();
       isPulling.current = false;
       pullAction.current = null;
-      action.fadeOut(0.5);
-      idleAction.current?.reset().fadeIn(0.5).play();
+      action.fadeOut(0.24);
+      idleAction.current?.reset().fadeIn(0.3).play();
       onPullCompleteRef.current();
     };
 
     isPulling.current = true;
+    pullProgress.current = 0;
     pullAction.current = action;
     pointerTarget.current.set(0, 0);
     pointerSamples.current = [];
     onPullFrameRef.current(0);
-    idleAction.current?.fadeOut(0.45);
+    idleAction.current?.fadeOut(0.2);
     action.reset();
     action.enabled = true;
     action.clampWhenFinished = true;
-    action.setEffectiveTimeScale(0.85);
+    action.setEffectiveTimeScale(1);
     action.setLoop(THREE.LoopOnce, 1);
-    action.fadeIn(0.45).play();
+    action.fadeIn(0.2).play();
     mixer.addEventListener('finished', handleFinished);
 
     return () => {
       mixer.removeEventListener('finished', handleFinished);
       if (pullAction.current === action) pullAction.current = null;
     };
-  }, [gltf.animations, mixer, pullSequence]);
+  }, [gltf.animations, mixer, pullSequence, webs]);
 
   useEffect(() => {
     const talkClip = gltf.animations.find((clip) => clip.name === 'Talk');
@@ -435,7 +478,7 @@ function CursorMascot({
     };
   }, [gltf.animations, isSpeaking, mixer, speechSequence]);
 
-  useFrame((_, rawDelta) => {
+  useFrame(({ camera: frameCamera }, rawDelta) => {
     const smoothingDelta = Math.min(rawDelta, 0.05);
 
     for (const name of TRACKED_BONES) {
@@ -443,24 +486,27 @@ function CursorMascot({
       bones[name].quaternion.multiply(scratch.inverse).normalize();
     }
 
-    // Keep clip and shutter on the same clock; resuming a hidden tab must not
-    // skip straight from reaching to release.
-    const animationDelta = document.hidden ? 0 : Math.min(rawDelta, 0.05);
+    const animationDelta = motionDelta(
+      rawDelta,
+      document.hidden,
+      resumeFrame.current,
+    );
+    resumeFrame.current = false;
     mixer.update(animationDelta);
 
-    if (isPulling.current && pullAction.current) {
-      let gripViewportY = 0;
-      for (const gripBone of gripBones) {
-        gripBone.getWorldPosition(scratch.gripWorld);
-        scratch.gripProjected.copy(scratch.gripWorld).project(camera);
-        gripViewportY += (1 - scratch.gripProjected.y) * 0.5;
+    // Portrait screens briefly make room for the cast, then return to the
+    // original close framing. The projection is shared by webs and shutter.
+    if (frameCamera instanceof THREE.PerspectiveCamera) {
+      const time = pullAction.current?.time ?? 0;
+      const room =
+        smoothstep((time - 0.25) / 0.65) *
+        (1 - smoothstep((time - 2.5) / 1.15));
+      const portrait = 1 - smoothstep((frameCamera.aspect - 0.7) / 0.4);
+      const zoom = 1 - 0.18 * portrait * room;
+      if (Math.abs(frameCamera.zoom - zoom) > 0.00001) {
+        frameCamera.zoom = zoom;
+        frameCamera.updateProjectionMatrix();
       }
-      onPullFrameRef.current(
-        pullAction.current.time,
-        (gl.domElement.getBoundingClientRect().top +
-          (gripViewportY / gripBones.length) * gl.domElement.clientHeight) /
-          window.innerHeight,
-      );
     }
 
     // Exact critically damped spring: continuous velocity at cursor reversals,
@@ -515,9 +561,70 @@ function CursorMascot({
       bones[name].quaternion.multiply(scratch.next[name]).normalize();
       lastOffsets.current[name].copy(scratch.next[name]);
     }
+    if (isPulling.current && pullAction.current) {
+      const bounds = gl.domElement.getBoundingClientRect();
+      model.updateMatrixWorld(true);
+      let meanHandY = 0;
+      gripBones.forEach((bone, index) => {
+        bone.getWorldPosition(scratch.handWorld[index]);
+        emitters[index].bone.localToWorld(
+          scratch.emitterWorld[index].copy(emitters[index].local),
+        );
+        scratch.gripProjected.copy(scratch.handWorld[index]).project(camera);
+        meanHandY +=
+          (bounds.top + (1 - scratch.gripProjected.y) * 0.5 * bounds.height) /
+          window.innerHeight /
+          2;
+      });
+      let progress: number | undefined;
+      if (webTravel) {
+        const [start, end] = webTravel.map(
+          (pose) =>
+            pose.reduce((sum, position) => {
+              scratch.gripProjected.copy(position).project(camera);
+              return (
+                sum +
+                (bounds.top +
+                  (1 - scratch.gripProjected.y) * 0.5 * bounds.height) /
+                  window.innerHeight
+              );
+            }, 0) / 2,
+        );
+        progress = (meanHandY - start) / (end - start);
+      }
+      const time = pullAction.current.time;
+      pullProgress.current =
+        time < WEB_PULL.pull
+          ? 0
+          : time >= WEB_PULL.land
+            ? 1
+            : Math.max(
+                pullProgress.current,
+                THREE.MathUtils.clamp(
+                  Number.isFinite(progress) ? progress! : webPullProgress(time),
+                  0,
+                  1,
+                ),
+              );
+      onPullFrameRef.current(time, pullProgress.current);
+      webs.update(
+        time,
+        scratch.emitterWorld,
+        0.008 + 0.992 * pullProgress.current,
+        camera,
+        bounds,
+        window.innerWidth,
+        window.innerHeight,
+      );
+    }
   });
 
-  return <primitive object={model} dispose={null} />;
+  return (
+    <>
+      <primitive object={model} dispose={null} />
+      <primitive object={webs.group} dispose={null} />
+    </>
+  );
 }
 
 export default function CharacterCanvas({
@@ -533,7 +640,7 @@ export default function CharacterCanvas({
   speechSequence: number;
   isSpeaking: boolean;
   onCursorOverload: () => void;
-  onPullFrame: (elapsedSeconds: number, gripViewportY?: number) => void;
+  onPullFrame: (elapsedSeconds: number, progress?: number) => void;
   onPullComplete: () => void;
   onReady: () => void;
 }) {

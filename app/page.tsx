@@ -5,25 +5,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { PortfolioContent, CHAPTERS } from '@/components/portfolio-content';
 import { Button } from '@/components/ui/button';
+import { WEB_PULL, smoothstep } from '@/lib/mascot-motion';
 
 const CharacterCanvas = dynamic(() => import('@/components/mascot-scene'), {
   ssr: false,
 });
 
 const PROMPT_INTERVAL_MS = 120_000;
-const SHUTTER_PULL_START_SECONDS = 4.15;
-const SHUTTER_PULL_END_SECONDS = 8.5;
-const SHUTTER_RELEASE_END_SECONDS = 9.05;
-const SHUTTER_REST_VIEWPORT_Y = 0.012;
-const SHUTTER_GRIP_OFFSET = 0.015;
 
 type VoiceCue = 'prompt' | 'slider' | 'reaction';
 type ShutterPhase = 'idle' | 'pull';
-
-function smootherstep(value: number) {
-  const amount = Math.min(1, Math.max(0, value));
-  return amount ** 3 * (amount * (amount * 6 - 15) + 10);
-}
 
 function PageFooter({ chapter }: { chapter: number }) {
   return (
@@ -51,9 +42,17 @@ export default function Home() {
   const transitioningRef = useRef(false);
   const shutterPhaseRef = useRef<ShutterPhase>('idle');
   const shutterRef = useRef<HTMLDivElement | null>(null);
-  const shutterProgressRef = useRef(0);
   const playCueRef = useRef<(cue: VoiceCue) => void>(() => undefined);
   const isTransitioning = shutterPhase !== 'idle';
+
+  useEffect(() => {
+    if (!isTransitioning) return;
+    const previous = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = previous;
+    };
+  }, [isTransitioning]);
 
   useEffect(() => {
     const audio = new Audio();
@@ -140,24 +139,34 @@ export default function Home() {
     playCueRef.current('prompt');
   }, []);
 
+  const showChapter = useCallback(
+    (nextChapter: number) => {
+      if (transitioningRef.current) return;
+      if (nextChapter === chapter) return;
+      window.scrollTo({ top: 0, behavior: 'instant' });
+
+      if (
+        !modelReady ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        setChapter(nextChapter);
+        playCueRef.current('slider');
+        return;
+      }
+
+      transitioningRef.current = true;
+      shutterPhaseRef.current = 'pull';
+      setIncomingChapter(nextChapter);
+      setShutterPhase('pull');
+      setPullSequence((value) => value + 1);
+    },
+    [chapter, modelReady],
+  );
+
   const showNextChapter = useCallback(() => {
-    if (transitioningRef.current || !modelReady) return;
-
-    const nextChapter = (chapter + 1) % CHAPTERS.length;
-
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setChapter(nextChapter);
-      playCueRef.current('slider');
-      return;
-    }
-
-    transitioningRef.current = true;
-    shutterPhaseRef.current = 'pull';
-    shutterProgressRef.current = 0;
-    setIncomingChapter(nextChapter);
-    setShutterPhase('pull');
-    setPullSequence((value) => value + 1);
-  }, [chapter, modelReady]);
+    if (!modelReady) return;
+    showChapter((chapter + 1) % CHAPTERS.length);
+  }, [chapter, showChapter, modelReady]);
 
   const handleCursorOverload = useCallback(() => {
     playCueRef.current('reaction');
@@ -166,58 +175,20 @@ export default function Home() {
   const handleModelReady = useCallback(() => setModelReady(true), []);
 
   const handlePullFrame = useCallback(
-    (elapsedSeconds: number, gripViewportY?: number) => {
+    (elapsedSeconds: number, pullProgress = 0) => {
       const shutter = shutterRef.current;
       if (!shutter) return;
 
-      const measuredProgress =
-        elapsedSeconds < SHUTTER_PULL_START_SECONDS
-          ? 0
-          : elapsedSeconds >= SHUTTER_PULL_END_SECONDS
-            ? 1
-            : Number.isFinite(gripViewportY)
-              ? Math.min(
-                  1,
-                  Math.max(
-                    0,
-                    ((gripViewportY ?? 0) +
-                      SHUTTER_GRIP_OFFSET -
-                      SHUTTER_REST_VIEWPORT_Y) /
-                      (1 - SHUTTER_REST_VIEWPORT_Y),
-                  ),
-                )
-              : smootherstep(
-                  (elapsedSeconds - SHUTTER_PULL_START_SECONDS) /
-                    (SHUTTER_PULL_END_SECONDS - SHUTTER_PULL_START_SECONDS),
-                );
-      const pullProgress = Math.max(
-        shutterProgressRef.current,
-        measuredProgress,
-      );
-      shutterProgressRef.current = pullProgress;
-      const shutterViewportY =
-        SHUTTER_REST_VIEWPORT_Y + (1 - SHUTTER_REST_VIEWPORT_Y) * pullProgress;
-      const contentOpacity = smootherstep((pullProgress - 0.04) / 0.18);
-      const footerOpacity = smootherstep((pullProgress - 0.82) / 0.18);
+      const shutterViewportY = 0.008 + 0.992 * pullProgress;
       const gripOpacity =
-        1 -
-        smootherstep(
-          (elapsedSeconds - SHUTTER_PULL_END_SECONDS) /
-            (SHUTTER_RELEASE_END_SECONDS - SHUTTER_PULL_END_SECONDS),
-        );
+        1 - smoothstep((elapsedSeconds - WEB_PULL.land) / 0.27);
 
       shutter.style.setProperty(
         '--shutter-translate-y',
         `${(shutterViewportY - 1) * 100}%`,
       );
-      shutter.style.setProperty(
-        '--shutter-content-opacity',
-        String(contentOpacity),
-      );
-      shutter.style.setProperty(
-        '--shutter-footer-opacity',
-        String(footerOpacity),
-      );
+      shutter.style.setProperty('--shutter-content-opacity', '1');
+      shutter.style.setProperty('--shutter-footer-opacity', '1');
       shutter.style.setProperty('--shutter-grip-opacity', String(gripOpacity));
     },
     [],
@@ -243,7 +214,7 @@ export default function Home() {
   }, [soundEnabled]);
 
   return (
-    <main className="portfolio-shell">
+    <main className="portfolio-shell" data-transitioning={isTransitioning}>
       <header className="site-header">
         <span className="wordmark">
           VED PATEL<span>·</span>
@@ -277,9 +248,27 @@ export default function Home() {
         Chapter {chapter + 1} of {CHAPTERS.length}: {CHAPTERS[chapter]}
       </p>
 
-      <div className="content-layer" key={`chapter-${chapter}`}>
+      <div
+        className="content-layer"
+        key={`chapter-${chapter}`}
+        inert={isTransitioning}
+      >
         <PortfolioContent index={chapter} />
       </div>
+
+      <nav className="chapter-nav" aria-label="Portfolio chapters">
+        {CHAPTERS.map((name, index) => (
+          <button
+            key={name}
+            type="button"
+            aria-current={chapter === index ? 'page' : undefined}
+            disabled={isTransitioning}
+            onClick={() => showChapter(index)}
+          >
+            <span>0{index + 1}</span> {name}
+          </button>
+        ))}
+      </nav>
 
       {isTransitioning && (
         <div
